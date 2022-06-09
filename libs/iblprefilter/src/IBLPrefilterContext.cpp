@@ -207,11 +207,11 @@ Texture* IBLPrefilterContext::EquirectangularToCubemap::operator()(
 
     ASSERT_PRECONDITION(equirect != nullptr, "equirect is null!");
 
-    ASSERT_PRECONDITION(equirect->getTarget() == Texture::Sampler::SAMPLER_2D,
+    ASSERT_PRECONDITION(equirect->getTarget() == Texture::Sampler::SAMPLER_2D || equirect->getTarget() == Texture::Sampler::SAMPLER_EXTERNAL,
             "equirect must be a 2D texture.");
 
     UTILS_UNUSED_IN_RELEASE
-    const uint8_t maxLevelCount = uint8_t(std::log2(equirect->getWidth()) + 0.5f) + 1u;
+    const uint8_t maxLevelCount = uint8_t(std::ilogbf(std::max(equirect->getWidth(), equirect->getHeight()))) + 1u;
 
     ASSERT_PRECONDITION(equirect->getLevels() == maxLevelCount,
             "equirect must have %u mipmap levels allocated.", +maxLevelCount);

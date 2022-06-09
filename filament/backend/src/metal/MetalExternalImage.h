@@ -36,6 +36,7 @@ class MetalExternalImage {
 public:
 
     MetalExternalImage(MetalContext& context,
+                       uint8_t levels,
             TextureSwizzle r = TextureSwizzle::CHANNEL_0,
             TextureSwizzle g = TextureSwizzle::CHANNEL_1,
             TextureSwizzle b = TextureSwizzle::CHANNEL_2,
@@ -118,6 +119,7 @@ private:
     id<MTLTexture> mTextureView = nullptr;
     size_t mWidth = 0;
     size_t mHeight = 0;
+    uint8_t mLevels = 1;
 
     // If the external image is in the YCbCr format, this holds the result of the converted RGB
     // texture.

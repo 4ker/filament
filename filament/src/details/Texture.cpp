@@ -370,8 +370,11 @@ void FTexture::setExternalStream(FEngine& engine, FStream* stream) noexcept {
 }
 
 void FTexture::generateMipmaps(FEngine& engine) const noexcept {
-    ASSERT_PRECONDITION(mTarget != SamplerType::SAMPLER_EXTERNAL,
-            "External Textures are not mipmappable.");
+
+    /*if (!ASSERT_POSTCONDITION_NON_FATAL(mTarget != SamplerType::SAMPLER_EXTERNAL,
+            "External Textures are not mipmappable.")) {
+        return;
+    }*/
 
     const bool formatMipmappable = engine.getDriverApi().isTextureFormatMipmappable(mFormat);
     ASSERT_PRECONDITION(formatMipmappable,
@@ -441,7 +444,7 @@ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
             }
             break;
         case SamplerType::SAMPLER_EXTERNAL:
-            // not mipmapable
+            generateMipsForLayer({});
             break;
         case SamplerType::SAMPLER_3D:
             // TODO: handle SAMPLER_3D -- this can't be done with a 2D blit, this would require

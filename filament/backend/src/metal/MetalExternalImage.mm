@@ -19,7 +19,7 @@
 #include "MetalContext.h"
 #include "MetalEnums.h"
 #include "MetalUtils.h"
-
+#include "MetalBlitter.h"
 #include <utils/Panic.h>
 #include <utils/trap.h>
 
@@ -70,8 +70,8 @@ ycbcrToRgb(texture2d<half, access::read>  inYTexture    [[texture(0)]],
 }
 )";
 
-MetalExternalImage::MetalExternalImage(MetalContext& context, TextureSwizzle r, TextureSwizzle g,
-        TextureSwizzle b, TextureSwizzle a) noexcept : mContext(context), mSwizzle{r, g, b, a} { }
+MetalExternalImage::MetalExternalImage(MetalContext& context, uint8_t levels, TextureSwizzle r, TextureSwizzle g,
+        TextureSwizzle b, TextureSwizzle a) noexcept : mContext(context), mLevels(levels), mSwizzle{r, g, b, a} { }
 
 bool MetalExternalImage::isValid() const noexcept {
     return mRgbTexture != nil || mImage != nullptr;
@@ -86,6 +86,8 @@ void MetalExternalImage::set(CVPixelBufferRef image) noexcept {
 
     OSType formatType = CVPixelBufferGetPixelFormatType(image);
     ASSERT_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA ||
+                         formatType == kCVPixelFormatType_128RGBAFloat ||
+                         formatType == kCVPixelFormatType_64RGBAHalf ||
                          formatType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
             "Metal external images must be in either 32BGRA or 420f format.");
 
@@ -96,10 +98,58 @@ void MetalExternalImage::set(CVPixelBufferRef image) noexcept {
 
     if (planeCount == 0) {
         mImage = image;
-        mTexture = createTextureFromImage(image, MTLPixelFormatBGRA8Unorm, 0);
-        mTextureView = createSwizzledTextureView(mTexture);
+        MTLPixelFormat mtlfmt;
+        switch (formatType) {
+            case kCVPixelFormatType_64RGBAHalf:
+                mtlfmt = MTLPixelFormatRGBA16Float;
+                break;
+            case kCVPixelFormatType_128RGBAFloat:
+                mtlfmt = MTLPixelFormatRGBA32Float;
+                break;
+            case kCVPixelFormatType_32BGRA:
+            default:
+                mtlfmt = MTLPixelFormatBGRA8Unorm;
+                break;
+        }
+        mTexture = createTextureFromImage(image, mtlfmt, 0);
         mWidth = CVPixelBufferGetWidth(image);
         mHeight = CVPixelBufferGetHeight(image);
+        
+        if (mLevels > 1) {
+            MTLTextureDescriptor* descriptor = [MTLTextureDescriptor new];
+            descriptor.pixelFormat = mtlfmt;
+            descriptor.textureType = MTLTextureType2D;
+            descriptor.width = mWidth;
+            descriptor.height = mHeight;
+            descriptor.arrayLength = 1;
+            descriptor.mipmapLevelCount = mLevels;
+            descriptor.sampleCount = 1;
+            descriptor.storageMode = MTLStorageModePrivate;
+            descriptor.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+            descriptor.swizzle = getSwizzleChannels(mSwizzle.r, mSwizzle.g, mSwizzle.b, mSwizzle.a);
+            mTextureView = [mContext.device newTextureWithDescriptor:descriptor];
+            
+            id<MTLTexture> interopMetalTexture = CVMetalTextureGetTexture(mTexture);
+            MetalBlitter::BlitArgs args;
+            args.filter = SamplerMagFilter::NEAREST;
+            args.source.level = 0;
+            args.source.region = MTLRegionMake2D(0, 0, mWidth, mHeight);
+            args.destination.level = 0;
+            args.destination.region = MTLRegionMake2D(0, 0, mWidth, mHeight);
+            args.source.color = interopMetalTexture;
+            args.destination.color = mTextureView;
+            id<MTLCommandBuffer> commandBuffer = [mContext.commandQueue commandBuffer];
+            commandBuffer.label = @"External Image Blit";
+            [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> o) {
+                CVPixelBufferRelease(image);
+            }];
+            mContext.blitter->blit(commandBuffer, args);
+            [commandBuffer commit];
+
+        } else {
+            mTextureView = createSwizzledTextureView(mTexture);
+        }
+     
     }
 
     if (planeCount == 2) {

@@ -56,7 +56,7 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
 }
 
 MetalSwapChain::MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow, uint64_t flags)
-        : context(context), layer(nativeWindow), externalImage(context),
+        : context(context), layer(nativeWindow), externalImage(context, 0),
         type(SwapChainType::CAMETALLAYER) {
 
     if (!(flags & SwapChain::CONFIG_TRANSPARENT) && !nativeWindow.opaque) {
@@ -78,11 +78,11 @@ MetalSwapChain::MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow
 }
 
 MetalSwapChain::MetalSwapChain(MetalContext& context, int32_t width, int32_t height, uint64_t flags)
-        : context(context), headlessWidth(width), headlessHeight(height), externalImage(context),
+        : context(context), headlessWidth(width), headlessHeight(height), externalImage(context, 0),
         type(SwapChainType::HEADLESS) { }
 
 MetalSwapChain::MetalSwapChain(MetalContext& context, CVPixelBufferRef pixelBuffer, uint64_t flags)
-        : context(context), externalImage(context), type(SwapChainType::CVPIXELBUFFERREF) {
+        : context(context), externalImage(context, 0), type(SwapChainType::CVPIXELBUFFERREF) {
     assert_invariant(flags & SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER);
     MetalExternalImage::assertWritableImage(pixelBuffer);
     externalImage.set(pixelBuffer);
@@ -406,7 +406,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
         TextureUsage usage, TextureSwizzle r, TextureSwizzle g, TextureSwizzle b,
         TextureSwizzle a) noexcept
     : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
-        externalImage(context, r, g, b, a) {
+        externalImage(context, levels, r, g, b, a) {
 
     devicePixelFormat = decidePixelFormat(&context, format);
     ASSERT_POSTCONDITION(devicePixelFormat != MTLPixelFormatInvalid, "Texture format not supported.");
@@ -511,7 +511,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
         uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage,
         id<MTLTexture> metalTexture) noexcept
     : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
-        externalImage(context) {
+        externalImage(context, levels) {
     texture = metalTexture;
     updateLodRange(0, levels - 1);
 }

@@ -1,0 +1,1840 @@
+diff --git a/.gitignore b/.gitignore
+index 196b33a..82b362f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -16,3 +16,4 @@ settings.json
+ test*.png
+ test*.json
+ results
++build
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a4b5282..e637d60 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -228,16 +228,12 @@ if (CMAKE_C_COMPILER_ID MATCHES "Clang")
+     if (CMAKE_C_COMPILER_VERSION VERSION_LESS MIN_CLANG_VERSION)
+         message(FATAL_ERROR "Detected C compiler Clang ${CMAKE_C_COMPILER_VERSION} < ${MIN_CLANG_VERSION}")
+     endif()
+-elseif (NOT MSVC)
+-    message(FATAL_ERROR "Detected C compiler ${CMAKE_C_COMPILER_ID} is unsupported")
+ endif()
+ 
+ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS MIN_CLANG_VERSION)
+         message(FATAL_ERROR "Detected CXX compiler Clang ${CMAKE_CXX_COMPILER_VERSION} < ${MIN_CLANG_VERSION}")
+     endif()
+-elseif (NOT MSVC)
+-    message(FATAL_ERROR "Detected CXX compiler ${CMAKE_CXX_COMPILER_ID} is unsupported")
+ endif()
+ 
+ # Detect use of the clang-cl.exe frontend, which does not support all of clangs normal options
+@@ -293,13 +289,13 @@ if (WIN32)
+ endif()
+ 
+ if (LINUX)
+-    option(USE_STATIC_LIBCXX "Link against the static runtime libraries." ON)
+-    if (${USE_STATIC_LIBCXX})
+-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+-        link_libraries("-static-libgcc -static-libstdc++")
+-        link_libraries(libc++.a)
+-        link_libraries(libc++abi.a)
+-    endif()
++#    option(USE_STATIC_LIBCXX "Link against the static runtime libraries." ON)
++#    if (${USE_STATIC_LIBCXX})
++#        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
++        #link_libraries("-static-libgcc -static-libstdc++")
++#        link_libraries(libc++.a)
++        #link_libraries(libc++abi.a)
++#    endif()
+ 
+     # Only linux, clang doesn't want to use a shared library that is not PIC.
+     # /usr/bin/ld: ../bluegl/libbluegl.a(BlueGL.cpp.o): relocation R_X86_64_32S
+diff --git a/filament/CMakeLists.txt b/filament/CMakeLists.txt
+index befc3c9..a24d703 100644
+--- a/filament/CMakeLists.txt
++++ b/filament/CMakeLists.txt
+@@ -558,7 +558,7 @@ if (MSVC)
+ elseif(WEBGL)
+     # Avoid strict-vtable-pointers here, it is broken in WebAssembly.
+     set(OPTIMIZATION_FLAGS -fvisibility-inlines-hidden)
+-else()
++elseif(APPLE)
+     set(OPTIMIZATION_FLAGS
+         -ffast-math
+         -ffp-contract=fast
+@@ -567,6 +567,12 @@ else()
+         -fvisibility-inlines-hidden
+         -fstrict-vtable-pointers
+     )
++else()
++    set(OPTIMIZATION_FLAGS
++    -ffast-math
++    -ffp-contract=fast
++    -fvisibility-inlines-hidden
++    )
+ endif()
+ 
+ set(LINUX_LINKER_OPTIMIZATION_FLAGS
+@@ -578,7 +584,7 @@ set(LINUX_COMPILER_FLAGS
+ 
+ if (MSVC)
+     set(FILAMENT_WARNINGS /W3)
+-else()
++elseif(APPLE)
+     set(FILAMENT_WARNINGS
+             -Wall -Wextra -Wno-unused-parameter
+             -Wextra-semi -Wnewline-eof -Wdeprecated -Wundef
+@@ -586,6 +592,12 @@ else()
+             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
+             -Wover-aligned
+     )
++else()
++    set(FILAMENT_WARNINGS
++            -Wall -Wextra -Wno-unused-parameter
++            -Wextra-semi -Wdeprecated -Wundef
++            -Wnon-virtual-dtor -Wimplicit-fallthrough
++    )
+ endif()
+ 
+ target_compile_options(${TARGET} PRIVATE
+diff --git a/filament/backend/CMakeLists.txt b/filament/backend/CMakeLists.txt
+index 276cf4f..f75cc4b 100644
+--- a/filament/backend/CMakeLists.txt
++++ b/filament/backend/CMakeLists.txt
+@@ -219,6 +219,12 @@ include_directories(${GENERATION_ROOT})
+ # we're building a library
+ add_library(${TARGET} STATIC ${PRIVATE_HDRS} ${PUBLIC_HDRS} ${SRCS})
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ # specify where the public headers of this library are
+ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+ 
+@@ -324,7 +330,7 @@ if (MSVC)
+ elseif(WEBGL)
+     # Avoid strict-vtable-pointers here, it is broken in WebAssembly.
+     set(OPTIMIZATION_FLAGS -fvisibility-inlines-hidden)
+-else()
++elseif(APPLE)
+     set(OPTIMIZATION_FLAGS
+         -ffast-math
+         -ffp-contract=fast
+@@ -333,6 +339,11 @@ else()
+         -fvisibility-inlines-hidden
+         -fstrict-vtable-pointers
+     )
++    set(OPTIMIZATION_FLAGS
++        -ffast-math
++        -ffp-contract=fast
++        -fvisibility-inlines-hidden
++    )
+ endif()
+ 
+ set(LINUX_LINKER_OPTIMIZATION_FLAGS
+@@ -341,7 +352,7 @@ set(LINUX_LINKER_OPTIMIZATION_FLAGS
+ 
+ if (MSVC)
+     set(FILAMENT_WARNINGS /W3)
+-else()
++elseif(APPLE)
+     set(FILAMENT_WARNINGS
+             -Wall -Wextra -Wno-unused-parameter
+             -Wextra-semi -Wnewline-eof -Wdeprecated -Wundef
+@@ -349,6 +360,12 @@ else()
+             -Wweak-vtables -Wnon-virtual-dtor -Wclass-varargs -Wimplicit-fallthrough
+             -Wover-aligned
+     )
++else()
++    set(FILAMENT_WARNINGS
++            -Wall -Wextra -Wno-unused-parameter
++            -Wextra-semi -Wdeprecated -Wundef
++            -Wnon-virtual-dtor -Wimplicit-fallthrough
++    )
+ endif()
+ 
+ if (APPLE)
+diff --git a/filament/backend/include/private/backend/CommandStream.h b/filament/backend/include/private/backend/CommandStream.h
+index ca58218..7ae22b3 100644
+--- a/filament/backend/include/private/backend/CommandStream.h
++++ b/filament/backend/include/private/backend/CommandStream.h
+@@ -180,7 +180,7 @@ class NoopCommand : public CommandBase {
+         *next = static_cast<NoopCommand*>(self)->mNext;
+     }
+ public:
+-    inline constexpr explicit NoopCommand(void* next) noexcept
++    inline explicit NoopCommand(void* next) noexcept
+             : CommandBase(execute), mNext(intptr_t((char *)next - (char *)this)) { }
+ };
+ 
+diff --git a/filament/backend/src/metal/MetalExternalImage.h b/filament/backend/src/metal/MetalExternalImage.h
+index ad8ef86..dd63b68 100644
+--- a/filament/backend/src/metal/MetalExternalImage.h
++++ b/filament/backend/src/metal/MetalExternalImage.h
+@@ -36,6 +36,7 @@ class MetalExternalImage {
+ public:
+ 
+     MetalExternalImage(MetalContext& context,
++                       uint8_t levels,
+             TextureSwizzle r = TextureSwizzle::CHANNEL_0,
+             TextureSwizzle g = TextureSwizzle::CHANNEL_1,
+             TextureSwizzle b = TextureSwizzle::CHANNEL_2,
+@@ -118,6 +119,7 @@ private:
+     id<MTLTexture> mTextureView = nullptr;
+     size_t mWidth = 0;
+     size_t mHeight = 0;
++    uint8_t mLevels = 1;
+ 
+     // If the external image is in the YCbCr format, this holds the result of the converted RGB
+     // texture.
+diff --git a/filament/backend/src/metal/MetalExternalImage.mm b/filament/backend/src/metal/MetalExternalImage.mm
+index 329e3bc..cffc261 100644
+--- a/filament/backend/src/metal/MetalExternalImage.mm
++++ b/filament/backend/src/metal/MetalExternalImage.mm
+@@ -19,7 +19,7 @@
+ #include "MetalContext.h"
+ #include "MetalEnums.h"
+ #include "MetalUtils.h"
+-
++#include "MetalBlitter.h"
+ #include <utils/Panic.h>
+ #include <utils/trap.h>
+ 
+@@ -70,8 +70,8 @@ ycbcrToRgb(texture2d<half, access::read>  inYTexture    [[texture(0)]],
+ }
+ )";
+ 
+-MetalExternalImage::MetalExternalImage(MetalContext& context, TextureSwizzle r, TextureSwizzle g,
+-        TextureSwizzle b, TextureSwizzle a) noexcept : mContext(context), mSwizzle{r, g, b, a} { }
++MetalExternalImage::MetalExternalImage(MetalContext& context, uint8_t levels, TextureSwizzle r, TextureSwizzle g,
++        TextureSwizzle b, TextureSwizzle a) noexcept : mContext(context), mLevels(levels), mSwizzle{r, g, b, a} { }
+ 
+ bool MetalExternalImage::isValid() const noexcept {
+     return mRgbTexture != nil || mImage != nullptr;
+@@ -86,6 +86,8 @@ void MetalExternalImage::set(CVPixelBufferRef image) noexcept {
+ 
+     OSType formatType = CVPixelBufferGetPixelFormatType(image);
+     ASSERT_POSTCONDITION(formatType == kCVPixelFormatType_32BGRA ||
++                         formatType == kCVPixelFormatType_128RGBAFloat ||
++                         formatType == kCVPixelFormatType_64RGBAHalf ||
+                          formatType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+             "Metal external images must be in either 32BGRA or 420f format.");
+ 
+@@ -96,10 +98,58 @@ void MetalExternalImage::set(CVPixelBufferRef image) noexcept {
+ 
+     if (planeCount == 0) {
+         mImage = image;
+-        mTexture = createTextureFromImage(image, MTLPixelFormatBGRA8Unorm, 0);
+-        mTextureView = createSwizzledTextureView(mTexture);
++        MTLPixelFormat mtlfmt;
++        switch (formatType) {
++            case kCVPixelFormatType_64RGBAHalf:
++                mtlfmt = MTLPixelFormatRGBA16Float;
++                break;
++            case kCVPixelFormatType_128RGBAFloat:
++                mtlfmt = MTLPixelFormatRGBA32Float;
++                break;
++            case kCVPixelFormatType_32BGRA:
++            default:
++                mtlfmt = MTLPixelFormatBGRA8Unorm;
++                break;
++        }
++        mTexture = createTextureFromImage(image, mtlfmt, 0);
+         mWidth = CVPixelBufferGetWidth(image);
+         mHeight = CVPixelBufferGetHeight(image);
++        
++        if (mLevels > 1) {
++            MTLTextureDescriptor* descriptor = [MTLTextureDescriptor new];
++            descriptor.pixelFormat = mtlfmt;
++            descriptor.textureType = MTLTextureType2D;
++            descriptor.width = mWidth;
++            descriptor.height = mHeight;
++            descriptor.arrayLength = 1;
++            descriptor.mipmapLevelCount = mLevels;
++            descriptor.sampleCount = 1;
++            descriptor.storageMode = MTLStorageModePrivate;
++            descriptor.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
++            descriptor.swizzle = getSwizzleChannels(mSwizzle.r, mSwizzle.g, mSwizzle.b, mSwizzle.a);
++            mTextureView = [mContext.device newTextureWithDescriptor:descriptor];
++            
++            id<MTLTexture> interopMetalTexture = CVMetalTextureGetTexture(mTexture);
++            MetalBlitter::BlitArgs args;
++            args.filter = SamplerMagFilter::NEAREST;
++            args.source.level = 0;
++            args.source.region = MTLRegionMake2D(0, 0, mWidth, mHeight);
++            args.destination.level = 0;
++            args.destination.region = MTLRegionMake2D(0, 0, mWidth, mHeight);
++            args.source.color = interopMetalTexture;
++            args.destination.color = mTextureView;
++            id<MTLCommandBuffer> commandBuffer = [mContext.commandQueue commandBuffer];
++            commandBuffer.label = @"External Image Blit";
++            [commandBuffer addCompletedHandler:^(id <MTLCommandBuffer> o) {
++                CVPixelBufferRelease(image);
++            }];
++            mContext.blitter->blit(commandBuffer, args);
++            [commandBuffer commit];
++
++        } else {
++            mTextureView = createSwizzledTextureView(mTexture);
++        }
++     
+     }
+ 
+     if (planeCount == 2) {
+diff --git a/filament/backend/src/metal/MetalHandles.mm b/filament/backend/src/metal/MetalHandles.mm
+index 22a3be0..dd0dbb1 100644
+--- a/filament/backend/src/metal/MetalHandles.mm
++++ b/filament/backend/src/metal/MetalHandles.mm
+@@ -56,7 +56,7 @@ static inline MTLTextureUsage getMetalTextureUsage(TextureUsage usage) {
+ }
+ 
+ MetalSwapChain::MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow, uint64_t flags)
+-        : context(context), layer(nativeWindow), externalImage(context),
++        : context(context), layer(nativeWindow), externalImage(context, 0),
+         type(SwapChainType::CAMETALLAYER) {
+ 
+     if (!(flags & SwapChain::CONFIG_TRANSPARENT) && !nativeWindow.opaque) {
+@@ -78,11 +78,11 @@ MetalSwapChain::MetalSwapChain(MetalContext& context, CAMetalLayer* nativeWindow
+ }
+ 
+ MetalSwapChain::MetalSwapChain(MetalContext& context, int32_t width, int32_t height, uint64_t flags)
+-        : context(context), headlessWidth(width), headlessHeight(height), externalImage(context),
++        : context(context), headlessWidth(width), headlessHeight(height), externalImage(context, 0),
+         type(SwapChainType::HEADLESS) { }
+ 
+ MetalSwapChain::MetalSwapChain(MetalContext& context, CVPixelBufferRef pixelBuffer, uint64_t flags)
+-        : context(context), externalImage(context), type(SwapChainType::CVPIXELBUFFERREF) {
++        : context(context), externalImage(context, 0), type(SwapChainType::CVPIXELBUFFERREF) {
+     assert_invariant(flags & SWAP_CHAIN_CONFIG_APPLE_CVPIXELBUFFER);
+     MetalExternalImage::assertWritableImage(pixelBuffer);
+     externalImage.set(pixelBuffer);
+@@ -406,7 +406,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
+         TextureUsage usage, TextureSwizzle r, TextureSwizzle g, TextureSwizzle b,
+         TextureSwizzle a) noexcept
+     : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
+-        externalImage(context, r, g, b, a) {
++        externalImage(context, levels, r, g, b, a) {
+ 
+     devicePixelFormat = decidePixelFormat(&context, format);
+     ASSERT_POSTCONDITION(devicePixelFormat != MTLPixelFormatInvalid, "Texture format not supported.");
+@@ -511,7 +511,7 @@ MetalTexture::MetalTexture(MetalContext& context, SamplerType target, uint8_t le
+         uint8_t samples, uint32_t width, uint32_t height, uint32_t depth, TextureUsage usage,
+         id<MTLTexture> metalTexture) noexcept
+     : HwTexture(target, levels, samples, width, height, depth, format, usage), context(context),
+-        externalImage(context) {
++        externalImage(context, levels) {
+     texture = metalTexture;
+     updateLodRange(0, levels - 1);
+ }
+diff --git a/filament/backend/src/vulkan/VulkanCommands.h b/filament/backend/src/vulkan/VulkanCommands.h
+index 0e360eb..7e5dd8f 100644
+--- a/filament/backend/src/vulkan/VulkanCommands.h
++++ b/filament/backend/src/vulkan/VulkanCommands.h
+@@ -123,8 +123,8 @@ class VulkanCommands {
+         VulkanCommandBuffer* mCurrent = nullptr;
+         VkSemaphore mSubmissionSignal = {};
+         VkSemaphore mInjectedSignal = {};
+-        VulkanCommandBuffer mStorage[CAPACITY] = {};
+-        VkSemaphore mSubmissionSignals[CAPACITY] = {};
++        VulkanCommandBuffer mStorage[CAPACITY];
++        VkSemaphore mSubmissionSignals[CAPACITY];
+         size_t mAvailableCount = CAPACITY;
+         CommandBufferObserver* mObserver = nullptr;
+ };
+diff --git a/filament/backend/src/vulkan/VulkanPipelineCache.cpp b/filament/backend/src/vulkan/VulkanPipelineCache.cpp
+index a573a1c..6c22d2f 100644
+--- a/filament/backend/src/vulkan/VulkanPipelineCache.cpp
++++ b/filament/backend/src/vulkan/VulkanPipelineCache.cpp
+@@ -594,12 +594,12 @@ void VulkanPipelineCache::unbindUniformBuffer(VkBuffer uniformBuffer) noexcept {
+ void VulkanPipelineCache::unbindImageView(VkImageView imageView) noexcept {
+     for (auto& sampler : mDescriptorRequirements.samplers) {
+         if (sampler.imageView == imageView) {
+-            sampler = {};
++            sampler = DescriptorImageInfo();
+         }
+     }
+     for (auto& target : mDescriptorRequirements.inputAttachments) {
+         if (target.imageView == imageView) {
+-            target = {};
++            target = DescriptorImageInfo();
+         }
+     }
+ }
+diff --git a/filament/include/filament/Material.h b/filament/include/filament/Material.h
+index 572de84..a2d525c 100644
+--- a/filament/include/filament/Material.h
++++ b/filament/include/filament/Material.h
+@@ -48,11 +48,11 @@ class UTILS_PUBLIC Material : public FilamentAPI {
+     struct BuilderDetails;
+ 
+ public:
+-    using BlendingMode = BlendingMode;
+-    using Shading = Shading;
+-    using Interpolation = Interpolation;
+-    using VertexDomain = VertexDomain;
+-    using TransparencyMode = TransparencyMode;
++    using BlendingMode = filament::BlendingMode;
++    using Shading = filament::Shading;
++    using Interpolation = filament::Interpolation;
++    using VertexDomain = filament::VertexDomain;
++    using TransparencyMode = filament::TransparencyMode;
+ 
+     using ParameterType = backend::UniformType;
+     using Precision = backend::Precision;
+diff --git a/filament/include/filament/MaterialInstance.h b/filament/include/filament/MaterialInstance.h
+index 2e6ad27..50b116d 100644
+--- a/filament/include/filament/MaterialInstance.h
++++ b/filament/include/filament/MaterialInstance.h
+@@ -16,7 +16,7 @@
+ 
+ #ifndef TNT_FILAMENT_MATERIALINSTANCE_H
+ #define TNT_FILAMENT_MATERIALINSTANCE_H
+-
++#include <cstring>
+ #include <filament/FilamentAPI.h>
+ #include <filament/Color.h>
+ 
+diff --git a/filament/include/filament/View.h b/filament/include/filament/View.h
+index 5153b86..21948fa 100644
+--- a/filament/include/filament/View.h
++++ b/filament/include/filament/View.h
+@@ -66,25 +66,25 @@ class Viewport;
+  */
+ class UTILS_PUBLIC View : public FilamentAPI {
+ public:
+-    using QualityLevel = QualityLevel;
+-    using BlendMode = BlendMode;
+-    using AntiAliasing = AntiAliasing;
+-    using Dithering = Dithering;
+-    using ShadowType = ShadowType;
+-
+-    using DynamicResolutionOptions = DynamicResolutionOptions;
+-    using BloomOptions = BloomOptions;
+-    using FogOptions = FogOptions;
+-    using DepthOfFieldOptions = DepthOfFieldOptions;
+-    using VignetteOptions = VignetteOptions;
+-    using RenderQuality = RenderQuality;
+-    using AmbientOcclusionOptions = AmbientOcclusionOptions;
+-    using TemporalAntiAliasingOptions = TemporalAntiAliasingOptions;
+-    using MultiSampleAntiAliasingOptions = MultiSampleAntiAliasingOptions;
+-    using VsmShadowOptions = VsmShadowOptions;
+-    using SoftShadowOptions = SoftShadowOptions;
+-    using ScreenSpaceReflectionsOptions = ScreenSpaceReflectionsOptions;
+-    using GuardBandOptions = GuardBandOptions;
++    using QualityLevel = filament::QualityLevel;
++    using BlendMode = filament::BlendMode;
++    using AntiAliasing = filament::AntiAliasing;
++    using Dithering = filament::Dithering;
++    using ShadowType = filament::ShadowType;
++
++    using DynamicResolutionOptions = filament::DynamicResolutionOptions;
++    using BloomOptions = filament::BloomOptions;
++    using FogOptions = filament::FogOptions;
++    using DepthOfFieldOptions = filament::DepthOfFieldOptions;
++    using VignetteOptions = filament::VignetteOptions;
++    using RenderQuality = filament::RenderQuality;
++    using AmbientOcclusionOptions = filament::AmbientOcclusionOptions;
++    using TemporalAntiAliasingOptions = filament::TemporalAntiAliasingOptions;
++    using MultiSampleAntiAliasingOptions = filament::MultiSampleAntiAliasingOptions;
++    using VsmShadowOptions = filament::VsmShadowOptions;
++    using SoftShadowOptions = filament::SoftShadowOptions;
++    using ScreenSpaceReflectionsOptions = filament::ScreenSpaceReflectionsOptions;
++    using GuardBandOptions = filament::GuardBandOptions;
+ 
+     /**
+      * Sets the View's name. Only useful for debugging.
+diff --git a/filament/src/Froxelizer.cpp b/filament/src/Froxelizer.cpp
+index ebee4e9..0b7943f 100644
+--- a/filament/src/Froxelizer.cpp
++++ b/filament/src/Froxelizer.cpp
+@@ -694,10 +694,9 @@ void Froxelizer::froxelizeAssignRecordsCompress() noexcept {
+ 
+         // We have a limitation of 255 spot + 255 point lights per froxel.
+         // note: initializer list for union cannot have more than one element
+-        FroxelEntry entry{
+-                .offset = offset,
+-                .count = (uint8_t)std::min(size_t(255), b.lights.count()),
+-        };
++        FroxelEntry entry;
++        entry.offset = offset;
++        entry.count = (uint8_t)std::min(size_t(255), b.lights.count());
+         const size_t lightCount = entry.count;
+ 
+         if (UTILS_UNLIKELY(offset + lightCount >= RECORD_BUFFER_ENTRY_COUNT)) {
+@@ -707,7 +706,8 @@ void Froxelizer::froxelizeAssignRecordsCompress() noexcept {
+             // note: instead of dropping froxels we could look for similar records we've already
+             // filed up.
+             do {
+-                froxels[i] = { .offset = 0, .count = allLightsCount };
++              froxels[i].offset = 0;
++              froxels[i].count = allLightsCount;
+                 if (records[i].lights.none()) {
+                     froxels[i].u32 = 0;
+                 }
+diff --git a/filament/src/PerViewUniforms.cpp b/filament/src/PerViewUniforms.cpp
+index eabf34a..fbf8044 100644
+--- a/filament/src/PerViewUniforms.cpp
++++ b/filament/src/PerViewUniforms.cpp
+@@ -56,8 +56,10 @@ PerViewUniforms::PerViewUniforms(FEngine& engine) noexcept
+ 
+     if (engine.getDFG().isValid()) {
+         TextureSampler sampler(TextureSampler::MagFilter::LINEAR);
+-        mSamplers.setSampler(PerViewSib::IBL_DFG_LUT,
+-                { engine.getDFG().getTexture(), sampler.getSamplerParams() });
++        backend::SamplerDescriptor s;
++        s.t = engine.getDFG().getTexture();
++        s.s = sampler.getSamplerParams();
++        mSamplers.setSampler(PerViewSib::IBL_DFG_LUT, std::move(s));
+     }
+ }
+ 
+@@ -163,10 +165,13 @@ void PerViewUniforms::prepareSSAO(Handle<HwTexture> ssao,
+             && options.resolution < 1.0f;
+ 
+     // LINEAR filtering is only needed when AO is enabled and low-quality upsampling is used.
+-    mSamplers.setSampler(PerViewSib::SSAO, { ssao, {
+-        .filterMag = options.enabled && !highQualitySampling ?
+-                SamplerMagFilter::LINEAR : SamplerMagFilter::NEAREST
+-    }});
++
++    backend::SamplerDescriptor sampler;
++    sampler.t = ssao;
++    sampler.s.filterMag = options.enabled && !highQualitySampling ?
++    SamplerMagFilter::LINEAR : SamplerMagFilter::NEAREST;
++    
++    mSamplers.setSampler(PerViewSib::SSAO, std::move(sampler));
+ 
+     const float edgeDistance = 1.0f / options.bilateralThreshold;
+     auto& s = mUniforms.edit();
+@@ -183,10 +188,13 @@ void PerViewUniforms::prepareSSR(Handle<HwTexture> ssr,
+         float refractionLodOffset,
+         ScreenSpaceReflectionsOptions const& ssrOptions) noexcept {
+ 
+-    mSamplers.setSampler(PerViewSib::SSR, { ssr, {
+-        .filterMag = SamplerMagFilter::LINEAR,
+-        .filterMin = SamplerMinFilter::LINEAR_MIPMAP_LINEAR
+-    }});
++
++    
++    backend::SamplerDescriptor sampler;
++    sampler.t = ssr;
++    sampler.s.filterMag = SamplerMagFilter::LINEAR;
++    sampler.s.filterMin = SamplerMinFilter::LINEAR_MIPMAP_LINEAR;
++    mSamplers.setSampler(PerViewSib::SSR, std::move(sampler));
+ 
+     auto& s = mUniforms.edit();
+     s.refractionLodOffset = refractionLodOffset;
+@@ -198,10 +206,12 @@ void PerViewUniforms::prepareHistorySSR(Handle<HwTexture> ssr,
+         math::mat4f const& uvFromViewMatrix,
+         ScreenSpaceReflectionsOptions const& ssrOptions) noexcept {
+ 
+-    mSamplers.setSampler(PerViewSib::SSR, { ssr, {
+-        .filterMag = SamplerMagFilter::LINEAR,
+-        .filterMin = SamplerMinFilter::LINEAR
+-    }});
++
++    backend::SamplerDescriptor sampler;
++    sampler.t = ssr;
++    sampler.s.filterMag = SamplerMagFilter::LINEAR;
++    sampler.s.filterMin = SamplerMinFilter::LINEAR;
++    mSamplers.setSampler(PerViewSib::SSR, std::move(sampler));
+ 
+     auto& s = mUniforms.edit();
+     s.ssrReprojection = historyProjection;
+@@ -214,7 +224,9 @@ void PerViewUniforms::prepareHistorySSR(Handle<HwTexture> ssr,
+ 
+ void PerViewUniforms::prepareStructure(Handle<HwTexture> structure) noexcept {
+     // sampler must be NEAREST
+-    mSamplers.setSampler(PerViewSib::STRUCTURE, { structure, {}});
++    backend::SamplerDescriptor sampler;
++    sampler.t = structure;
++    mSamplers.setSampler(PerViewSib::STRUCTURE, std::move(sampler));
+ }
+ 
+ void PerViewUniforms::prepareDirectionalLight(
+@@ -273,18 +285,22 @@ void PerViewUniforms::prepareAmbientLight(FIndirectLight const& ibl,
+     if (!reflection) {
+         reflection = engine.getDummyCubemap()->getHwHandle();
+     }
+-    mSamplers.setSampler(PerViewSib::IBL_SPECULAR, {
+-            reflection, {
+-                    .filterMag = SamplerMagFilter::LINEAR,
+-                    .filterMin = SamplerMinFilter::LINEAR_MIPMAP_LINEAR
+-            }});
++
++    
++    backend::SamplerDescriptor sampler;
++    sampler.t = reflection;
++    sampler.s.filterMag = SamplerMagFilter::LINEAR;
++    sampler.s.filterMin = SamplerMinFilter::LINEAR_MIPMAP_LINEAR;
++    mSamplers.setSampler(PerViewSib::IBL_SPECULAR, std::move(sampler));
+ }
+ 
+ void PerViewUniforms::prepareDynamicLights(Froxelizer& froxelizer) noexcept {
+     auto& s = mUniforms.edit();
+     froxelizer.updateUniforms(s);
+     float f = froxelizer.getLightFar();
+-    mSamplers.setSampler(PerViewSib::FROXELS, { froxelizer.getFroxelTexture() });
++    backend::SamplerDescriptor sampler;
++    sampler.t = froxelizer.getFroxelTexture();
++    mSamplers.setSampler(PerViewSib::FROXELS, std::move(sampler));
+     s.lightFarAttenuationParams = 0.5f * float2{ 10.0f, 10.0f / (f * f) };
+ }
+ 
+@@ -316,12 +332,14 @@ void PerViewUniforms::prepareShadowVSM(Handle<HwTexture> texture,
+     if (options.anisotropy > 0 || options.mipmapping) {
+         filterMin = SamplerMinFilter::LINEAR_MIPMAP_LINEAR;
+     }
+-    mSamplers.setSampler(PerViewSib::SHADOW_MAP, {
+-            texture, {
+-                    .filterMag = SamplerMagFilter::LINEAR,
+-                    .filterMin = filterMin,
+-                    .anisotropyLog2 = options.anisotropy,
+-            }});
++
++    backend::SamplerDescriptor sampler;
++    sampler.t = texture;
++    sampler.s.filterMag = SamplerMagFilter::LINEAR;
++    sampler.s.filterMin = filterMin;
++    sampler.s.anisotropyLog2 = options.anisotropy;
++    mSamplers.setSampler(PerViewSib::SHADOW_MAP, std::move(sampler));
++    
+     auto& s = mUniforms.edit();
+     s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_EVSM;
+     s.vsmExponent = options.highPrecision ? high : low;
+@@ -332,13 +350,14 @@ void PerViewUniforms::prepareShadowVSM(Handle<HwTexture> texture,
+ 
+ void PerViewUniforms::prepareShadowPCF(Handle<HwTexture> texture,
+         ShadowMappingUniforms const& shadowMappingUniforms) noexcept {
+-    mSamplers.setSampler(PerViewSib::SHADOW_MAP, {
+-            texture, {
+-                    .filterMag = SamplerMagFilter::LINEAR,
+-                    .filterMin = SamplerMinFilter::LINEAR,
+-                    .compareMode = SamplerCompareMode::COMPARE_TO_TEXTURE,
+-                    .compareFunc = SamplerCompareFunc::GE
+-            }});
++
++    backend::SamplerDescriptor sampler;
++    sampler.t = texture;
++    sampler.s.filterMag = SamplerMagFilter::LINEAR;
++    sampler.s.filterMin = SamplerMinFilter::LINEAR;
++    sampler.s.compareMode = SamplerCompareMode::COMPARE_TO_TEXTURE;
++    sampler.s.compareFunc = SamplerCompareFunc::GE;
++    mSamplers.setSampler(PerViewSib::SHADOW_MAP, std::move(sampler));
+     auto& s = mUniforms.edit();
+     s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_PCF;
+     PerViewUniforms::prepareShadowSampling(s, shadowMappingUniforms);
+@@ -347,7 +366,9 @@ void PerViewUniforms::prepareShadowPCF(Handle<HwTexture> texture,
+ void PerViewUniforms::prepareShadowDPCF(Handle<HwTexture> texture,
+         ShadowMappingUniforms const& shadowMappingUniforms,
+         SoftShadowOptions const& options) noexcept {
+-    mSamplers.setSampler(PerViewSib::SHADOW_MAP, { texture, {}});
++    backend::SamplerDescriptor sampler;
++    sampler.t = texture;
++    mSamplers.setSampler(PerViewSib::SHADOW_MAP, std::move(sampler));
+     auto& s = mUniforms.edit();
+     s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_DPCF;
+     s.shadowPenumbraRatioScale = options.penumbraRatioScale;
+@@ -357,7 +378,9 @@ void PerViewUniforms::prepareShadowDPCF(Handle<HwTexture> texture,
+ void PerViewUniforms::prepareShadowPCSS(Handle<HwTexture> texture,
+         ShadowMappingUniforms const& shadowMappingUniforms,
+         SoftShadowOptions const& options) noexcept {
+-    mSamplers.setSampler(PerViewSib::SHADOW_MAP, { texture, {}});
++    backend::SamplerDescriptor sampler;
++    sampler.t = texture;
++    mSamplers.setSampler(PerViewSib::SHADOW_MAP, std::move(sampler));
+     auto& s = mUniforms.edit();
+     s.shadowSamplingType = SHADOW_SAMPLING_RUNTIME_PCSS;
+     s.shadowPenumbraRatioScale = options.penumbraRatioScale;
+diff --git a/filament/src/PostProcessManager.cpp b/filament/src/PostProcessManager.cpp
+index 3d8cad8..194e261 100644
+--- a/filament/src/PostProcessManager.cpp
++++ b/filament/src/PostProcessManager.cpp
+@@ -386,10 +386,11 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
+                             FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 }
+ 
+-                builder.declareRenderPass("Structure Target", {
+-                        .attachments = { .color = { data.picking }, .depth = data.depth },
+-                        .clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::DEPTH
+-                });
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.picking;
++                descr.attachments.content.depth = data.depth;
++                descr.clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::DEPTH;
++                builder.declareRenderPass("Structure Target", descr);
+             },
+             [=, renderPass = pass](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) mutable {
+@@ -423,9 +424,10 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
+                             .level = uint8_t(i)
+                     });
+                     out = builder.write(out, FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+-                    data.rt[i - 1] = builder.declareRenderPass("Structure mip target", {
+-                            .attachments = { .depth = out }
+-                    });
++
++                    FrameGraphRenderPass::Descriptor descr;
++                    descr.attachments.content.depth = out;
++                    data.rt[i - 1] = builder.declareRenderPass("Structure mip target", descr);
+                 }
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+@@ -437,6 +439,12 @@ PostProcessManager::StructurePassOutput PostProcessManager::structure(FrameGraph
+                 for (size_t level = 0; level < levelCount - 1; level++) {
+                     auto out = resources.getRenderPassInfo(level);
+                     driver.setMinMaxLevels(in, level, level);
++
++                    auto& material = getPostProcessMaterial("mipmapDepth");
++                    FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
++                    SamplerParams depthSamplerParams{};
++                    depthSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                    mi->setParameter("depth", in, depthSamplerParams);
+                     mi->setParameter("level", uint32_t(level));
+                     commitAndRender(out, material, driver);
+                 }
+@@ -501,9 +509,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::ssr(FrameGraph& fg,
+                         FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+ 
+                 // finally declare our render target
+-                builder.declareRenderPass("Reflections Target", {
+-                        .attachments = { .color = { data.reflections }, .depth = data.depth },
+-                        .clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::DEPTH });
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.reflections;
++                descr.attachments.content.depth = data.depth;
++                descr.clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::DEPTH;
++                builder.declareRenderPass("Reflections Target", descr);
+ 
+                 // get the structure buffer
+                 assert_invariant(structure);
+@@ -666,7 +676,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::screenSpaceAmbientOcclusion(
+                 data.output = builder.createTexture("Depth Texture Copy", desc);
+                 data.output = builder.write(data.output,
+                         FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+-                builder.declareRenderPass("Depth Copy RenderTarget", {{ .depth = data.output }});
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.depth = data.output;
++                builder.declareRenderPass("Depth Copy RenderTarget", descr);
+             },
+             [=](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) {
+@@ -719,11 +732,14 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::screenSpaceAmbientOcclusion(
+ 
+                 depthAttachment = builder.read(depthAttachment,
+                         FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+-                builder.declareRenderPass("SSAO Target", {
+-                        .attachments = { .color = { data.ao, data.bn }, .depth = depthAttachment },
+-                        .clearColor = { 1.0f },
+-                        .clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::COLOR1
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.ao;
++                descr.attachments.content.color[1] = data.bn;
++                descr.attachments.content.depth = depthAttachment;
++                descr.clearColor = { 1.0f };
++                descr.clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::COLOR1;
++                builder.declareRenderPass("SSAO Target", descr);
+             },
+             [=](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) {
+@@ -757,8 +773,9 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::screenSpaceAmbientOcclusion(
+                             getPostProcessMaterial("sao");
+ 
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("depth", depth, {
+-                        .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
++                SamplerParams depthSamplerParams{};
++                depthSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                mi->setParameter("depth", depth, depthSamplerParams);
+                 mi->setParameter("screenFromViewMatrix",
+                         mat4f(screenFromClipMatrix * cameraInfo.projection));
+                 mi->setParameter("resolution",
+@@ -875,11 +892,13 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::bilateralBlurPass(FrameGraph
+                 // We need to clear the buffers because we are skipping pixels at infinity (skybox)
+                 data.blurred = builder.write(data.blurred, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+ 
+-                builder.declareRenderPass("Blurred target", {
+-                        .attachments = { .color = { data.ao, data.bn }, .depth = depth },
+-                        .clearColor = { 1.0f },
+-                        .clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::COLOR1
+-                });
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.ao;
++                descr.attachments.content.color[1] = data.bn;
++                descr.attachments.content.depth = depth;
++                descr.clearColor = { 1.0f };
++                descr.clearFlags = TargetBufferFlags::COLOR0 | TargetBufferFlags::COLOR1;
++                builder.declareRenderPass("Blurred target", descr);
+             },
+             [=](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) {
+@@ -1083,10 +1102,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::gaussianBlurPass(FrameGraph&
+ 
+                 // horizontal pass
+ 
+-                mi->setParameter("source", hwIn, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
+-                });
++                SamplerParams sourceSamplerParams{};
++                sourceSamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                sourceSamplerParams.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
++                mi->setParameter("source", hwIn, sourceSamplerParams);
+                 mi->setParameter("level", float(inSubDesc.level));
+                 mi->setParameter("layer", float(inSubDesc.layer));
+                 mi->setParameter("reinhard", reinhard ? uint32_t(1) : uint32_t(0));
+@@ -1105,10 +1124,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::gaussianBlurPass(FrameGraph&
+                 assert_invariant(width == hwOutRT.params.viewport.width);
+                 assert_invariant(height == hwOutRT.params.viewport.height);
+ 
+-                mi->setParameter("source", hwTemp, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR /* level is always 0 */
+-                });
++                SamplerParams sourceSamplerParams2{};
++                sourceSamplerParams2.filterMin = SamplerMinFilter::LINEAR;
++                sourceSamplerParams2.filterMag = SamplerMagFilter::LINEAR; /* level is always 0 */
++                mi->setParameter("source", hwTemp, sourceSamplerParams2);
+                 mi->setParameter("level", 0.0f);
+                 mi->setParameter("layer", 0.0f);
+                 mi->setParameter("axis", float2{ 0, 1.0f / tempDesc.height });
+@@ -1476,23 +1495,29 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                 data.color = builder.sample(input);
+                 data.depth = builder.sample(depth);
+ 
+-                data.outColor = builder.createTexture("dof downsample output", {
+-                        .width  = width, .height = height, .levels = mipmapCount, .format = format
+-                });
+-                data.outCoc = builder.createTexture("dof CoC output", {
+-                        .width  = width, .height = height, .levels = mipmapCount,
+-                        .format = TextureFormat::R16F,
+-                        .swizzle = {
+-                                // the next stage expects min/max CoC in the red/green channel
+-                                .r = backend::TextureSwizzle::CHANNEL_0,
+-                                .g = backend::TextureSwizzle::CHANNEL_0 },
+-                });
++                FrameGraphTexture::Descriptor dofTexDescr;
++                dofTexDescr.width = width;
++                dofTexDescr.height = height;
++                dofTexDescr.levels = mipmapCount;
++                dofTexDescr.format = format;
++                data.outColor = builder.createTexture("dof downsample output", dofTexDescr);
++
++                FrameGraphTexture::Descriptor cocTexDescr;
++                cocTexDescr.width = width;
++                cocTexDescr.height = height;
++                cocTexDescr.levels = mipmapCount;
++                cocTexDescr.format = TextureFormat::R16F;
++                // the next stage expects min/max CoC in the red/green channel
++                cocTexDescr.swizzle.r = backend::TextureSwizzle::CHANNEL_0;
++                cocTexDescr.swizzle.g = backend::TextureSwizzle::CHANNEL_0;
++                data.outCoc = builder.createTexture("dof CoC output", cocTexDescr);
+                 data.outColor = builder.write(data.outColor, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 data.outCoc   = builder.write(data.outCoc,   FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("DoF Target", { .attachments = {
+-                                .color = { data.outColor, data.outCoc }
+-                        }
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.outColor;
++                descr.attachments.content.color[1] = data.outCoc;
++                builder.declareRenderPass("DoF Target", descr);
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+                 auto const& out = resources.getRenderPassInfo();
+@@ -1502,8 +1527,12 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                         getPostProcessMaterial("dofCoc") :
+                         getPostProcessMaterial("dofDownsample");
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("color", color, { .filterMin = SamplerMinFilter::NEAREST });
+-                mi->setParameter("depth", depth, { .filterMin = SamplerMinFilter::NEAREST });
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                mi->setParameter("color", color, colorSamplerParams);
++                SamplerParams depthSamplerParams{};
++                depthSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                mi->setParameter("depth", depth, depthSamplerParams);
+                 mi->setParameter("cocParams", cocParams);
+                 mi->setParameter("cocClamp", float2{
+                     -(dofOptions.maxForegroundCOC ? dofOptions.maxForegroundCOC : DOF_DEFAULT_MAX_COC),
+@@ -1541,10 +1570,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                     inOutColor = builder.write(inOutColor, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                     inOutCoc   = builder.write(inOutCoc,   FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+ 
+-                    data.rp[i] = builder.declareRenderPass("DoF Target", { .attachments = {
+-                                .color = { inOutColor, inOutCoc  }
+-                        }
+-                    });
++                    FrameGraphRenderPass::Descriptor descr;
++                    descr.attachments.content.color[0] = data.inOutColor;
++                    descr.attachments.content.color[1] = data.inOutCoc;
++
++                    data.rp[i] = builder.declareRenderPass("DoF Target", descr);
+                 }
+             },
+             [=](FrameGraphResources const& resources,
+@@ -1556,8 +1586,13 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+ 
+                 auto const& material = getPostProcessMaterial("dofMipmap");
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("color", inOutColor, { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
+-                mi->setParameter("coc",   inOutCoc,   { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
++
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                mi->setParameter("color", inOutColor, colorSamplerParams);
++                SamplerParams cocSamplerParams{};
++                cocSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                mi->setParameter("coc",   inOutCoc,   cocSamplerParams);
+                 mi->use(driver);
+ 
+                 const PipelineState pipeline(material.getPipelineState(mEngine, variant));
+@@ -1628,7 +1663,9 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                             getPostProcessMaterial("dofTilesSwizzle") :
+                             getPostProcessMaterial("dofTiles");
+                     FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                    mi->setParameter("cocMinMax", inCocMinMax, { .filterMin = SamplerMinFilter::NEAREST });
++                    SamplerParams cocMinMaxSamplerParams{};
++                    cocMinMaxSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                    mi->setParameter("cocMinMax", inCocMinMax, cocMinMaxSamplerParams);
+                     mi->setParameter("texelSize", float2{ 1.0f / inputDesc.width, 1.0f / inputDesc.height });
+                     commitAndRender(out, material, driver);
+                 });
+@@ -1660,7 +1697,9 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                     auto inTilesCocMinMax = resources.getTexture(data.inTilesCocMinMax);
+                     auto const& material = getPostProcessMaterial("dofDilate");
+                     FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                    mi->setParameter("tiles", inTilesCocMinMax, { .filterMin = SamplerMinFilter::NEAREST });
++                    SamplerParams tilesSamplerParams{};
++                    tilesSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                    mi->setParameter("tiles", inTilesCocMinMax, tilesSamplerParams);
+                     commitAndRender(out, material, driver);
+                 });
+         return ppDoFDilate->outTilesCocMinMax;
+@@ -1703,9 +1742,12 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                 });
+                 data.outColor  = builder.write(data.outColor, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 data.outAlpha  = builder.write(data.outAlpha, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("DoF Target", {
+-                        .attachments = { .color = { data.outColor, data.outAlpha }}
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.outColor;
++                descr.attachments.content.color[1] = data.outAlpha;
++
++                builder.declareRenderPass("DoF Target", descr);
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+                 auto const& out = resources.getRenderPassInfo();
+@@ -1719,14 +1761,26 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                 auto const& material = getPostProcessMaterial("dof");
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+                 // it's not safe to use bilinear filtering in the general case (causes artifacts around edges)
++
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
+                 mi->setParameter("color", color,
+-                        { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
++                        colorSamplerParams);
++
++                SamplerParams colorLinearSamplerParams{};
++                colorLinearSamplerParams.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
+                 mi->setParameter("colorLinear", color,
+-                        { .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST });
++                        colorLinearSamplerParams);
++
++                SamplerParams cocSamplerParams{};
++                cocSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
+                 mi->setParameter("coc", coc,
+-                        { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
++                        cocSamplerParams);
++
++                SamplerParams tilesSamplerParams{};
++                tilesSamplerParams.filterMin = SamplerMinFilter::NEAREST;
+                 mi->setParameter("tiles", tilesCocMinMax,
+-                        { .filterMin = SamplerMinFilter::NEAREST });
++                        tilesSamplerParams);
+                 mi->setParameter("cocToTexelScale", float2{
+                         bokehAspectRatio / (inputDesc.width  * dofResolution),
+                                      1.0 / (inputDesc.height * dofResolution)
+@@ -1765,9 +1819,12 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+                 data.outAlpha = builder.createTexture("dof alpha output", fg.getDescriptor(data.inAlpha));
+                 data.outColor = builder.write(data.outColor, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 data.outAlpha = builder.write(data.outAlpha, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("DoF Target", {
+-                        .attachments = { .color = { data.outColor, data.outAlpha }}
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.outColor;
++                descr.attachments.content.color[1] = data.outAlpha;
++
++                builder.declareRenderPass("DoF Target", descr);
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+                 auto const& out = resources.getRenderPassInfo();
+@@ -1778,9 +1835,19 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+ 
+                 auto const& material = getPostProcessMaterial("dofMedian");
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("dof",   inColor,        { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
+-                mi->setParameter("alpha", inAlpha,        { .filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST });
+-                mi->setParameter("tiles", tilesCocMinMax, { .filterMin = SamplerMinFilter::NEAREST });
++
++                SamplerParams dofSamplerParams{};
++                dofSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                mi->setParameter("dof",   inColor,        dofSamplerParams);
++
++                SamplerParams alphaSamplerParams{};
++                alphaSamplerParams.filterMin = SamplerMinFilter::NEAREST_MIPMAP_NEAREST;
++                mi->setParameter("alpha", inAlpha,        alphaSamplerParams);
++
++                SamplerParams tilesSamplerParams{};
++                tilesSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                mi->setParameter("tiles", tilesCocMinMax, tilesSamplerParams);
++
+                 commitAndRender(out, material, driver);
+             });
+ 
+@@ -1825,10 +1892,23 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::dof(FrameGraph& fg,
+ 
+                 auto const& material = getPostProcessMaterial("dofCombine");
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("color", color, { .filterMin = SamplerMinFilter::NEAREST });
+-                mi->setParameter("dof",   dof,   { .filterMag = SamplerMagFilter::NEAREST });
+-                mi->setParameter("alpha", alpha, { .filterMag = SamplerMagFilter::NEAREST });
+-                mi->setParameter("tiles", tilesCocMinMax, { .filterMin = SamplerMinFilter::NEAREST });
++
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                mi->setParameter("color", color, colorSamplerParams);
++
++                SamplerParams dofSamplerParams{};
++                dofSamplerParams.filterMag = SamplerMagFilter::NEAREST;
++                mi->setParameter("dof",   dof,   dofSamplerParams);
++
++                SamplerParams alphaSamplerParams{};
++                alphaSamplerParams.filterMag = SamplerMagFilter::NEAREST;
++                mi->setParameter("alpha", alpha, alphaSamplerParams);
++
++                SamplerParams tilesSamplerParams{};
++                tilesSamplerParams.filterMin = SamplerMinFilter::NEAREST;
++                mi->setParameter("tiles", tilesCocMinMax, tilesSamplerParams);
++
+                 commitAndRender(out, material, driver);
+             });
+ 
+@@ -1930,20 +2010,18 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloomPass(FrameGraph& fg
+                 auto hwOut = resources.getTexture(data.out);
+                 auto hwStage = resources.getTexture(data.stage);
+ 
+-                auto const& material = getPostProcessMaterial("bloomDownsample");
+-                auto const* ma = material.getMaterial(mEngine);
++                mi->use(driver);
+ 
+-                FMaterialInstance* mis[] = {
+-                        ma->createInstance("bloomDownsample-ping"),
+-                        ma->createInstance("bloomDownsample-pong"),
+-                        ma->createInstance("bloomDownsample-first"),
+-                };
+-
+-                mis[0]->setParameter("source", hwOut, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
+-                });
++                SamplerParams samplerParams{};
++                samplerParams.filterMag = SamplerMagFilter::LINEAR;
++                samplerParams.filterMin = SamplerMinFilter::LINEAR;
+ 
++                mi->setParameter("source", hwIn, samplerParams);
++                mi->setParameter("level", 0.0f);
++                mi->setParameter("threshold", inoutBloomOptions.threshold ? 1.0f : 0.0f);
++                mi->setParameter("invHighlight",
++                        std::isinf(inoutBloomOptions.highlight) ? 0.0f : 1.0f
++                                                                            / inoutBloomOptions.highlight);
+                 mis[1]->setParameter("source", hwStage, {
+                         .filterMag = SamplerMagFilter::LINEAR,
+                         .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
+@@ -1971,19 +2049,13 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloomPass(FrameGraph& fg
+                     render(hwDstRT, pipeline, driver);
+                 }
+ 
+-                for (size_t i = 1; i < inoutBloomOptions.levels; i++) {
+-                    const size_t parity = 1u - (i & 0x1u);
+-                    auto hwDstRT = resources.getRenderPassInfo(parity ? data.outRT[i] : data.stageRT[i]);
+-                    hwDstRT.params.flags.discardStart = TargetBufferFlags::COLOR;
+-                    hwDstRT.params.flags.discardEnd = TargetBufferFlags::NONE;
+-                    mis[parity]->setParameter("level", float(i - 1));
+-                    mis[parity]->commit(driver);
+-                    mis[parity]->use(driver);
+-                    render(hwDstRT, pipeline, driver);
+-                }
+ 
+-                for (auto& mi : mis) {
+-                    mEngine.destroy(mi);
++                    // prepare the next level
++                    SamplerParams samplerParamsi{};
++                    samplerParamsi.filterMag = SamplerMagFilter::LINEAR;
++                    samplerParamsi.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
++                    mi->setParameter("source", parity ? hwOut : hwStage, samplerParamsi);
++                    mi->setParameter("level", float(i));
+                 }
+             });
+ 
+@@ -2045,10 +2117,14 @@ PostProcessManager::BloomPassOutput PostProcessManager::bloomPass(FrameGraph& fg
+ 
+                     auto w = FTexture::valueForLevel(i - 1, outDesc.width);
+                     auto h = FTexture::valueForLevel(i - 1, outDesc.height);
+-                    mis[parity]->setParameter("resolution", float4{ w, h, 1.0f / w, 1.0f / h });
+-                    mis[parity]->setParameter("level", float(i));
+-                    mis[parity]->commit(driver);
+-                    mis[parity]->use(driver);
++
++                    mi->setParameter("resolution", float4{ w, h, 1.0f / w, 1.0f / h });
++                    SamplerParams sourceSamplerParams{};
++                    sourceSamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                    sourceSamplerParams.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
++                    mi->setParameter("source", parity ? hwStage : hwOut, sourceSamplerParams);
++                    mi->setParameter("level", float(i));
++                    mi->commit(driver);
+                     render(hwDstRT, pipeline, driver);
+                 }
+ 
+@@ -2100,10 +2176,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::flarePass(FrameGraph& fg,
+                 auto const& material = getPostProcessMaterial("flare");
+                 FMaterialInstance* mi = material.getMaterialInstance(mEngine);
+ 
+-                mi->setParameter("color", in, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
+-                });
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                colorSamplerParams.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
++                mi->setParameter("color", in, colorSamplerParams);
+ 
+                 mi->setParameter("level", 1.0f);    // adjust with resolution
+                 mi->setParameter("aspectRatio", float2{ aspectRatio, 1.0f / aspectRatio });
+@@ -2163,14 +2239,16 @@ void PostProcessManager::colorGradingPrepareSubpass(DriverApi& driver,
+     auto const& material = getPostProcessMaterial("colorGradingAsSubpass");
+     FMaterialInstance* mi = material.getMaterialInstance(mEngine);
+ 
+-    mi->setParameter("lut", colorGrading->getHwHandle(), {
+-            .filterMag = SamplerMagFilter::LINEAR,
+-            .filterMin = SamplerMinFilter::LINEAR,
+-            .wrapS = SamplerWrapMode::CLAMP_TO_EDGE,
+-            .wrapT = SamplerWrapMode::CLAMP_TO_EDGE,
+-            .wrapR = SamplerWrapMode::CLAMP_TO_EDGE,
+-            .anisotropyLog2 = 0
+-    });
++    SamplerParams samplerParams{};
++    samplerParams.filterMag = SamplerMagFilter::LINEAR,
++    samplerParams.filterMin = SamplerMinFilter::LINEAR,
++    samplerParams.wrapS = SamplerWrapMode::CLAMP_TO_EDGE,
++    samplerParams.wrapT = SamplerWrapMode::CLAMP_TO_EDGE,
++    samplerParams.wrapR = SamplerWrapMode::CLAMP_TO_EDGE,
++        samplerParams.anisotropyLog2 = 0;
++
++    mi->setParameter("lut", colorGrading->getHwHandle(), samplerParams);
++
+     const float lutDimension = float(colorGrading->getDimension());
+     mi->setParameter("lutSize", float2{
+         0.5f / lutDimension, (lutDimension - 1.0f) / lutDimension,
+@@ -2234,9 +2312,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::customResolveUncompressPass(
+             [&](FrameGraph::Builder& builder, auto& data) {
+                 data.inout = builder.read(inout, FrameGraphTexture::Usage::SUBPASS_INPUT);
+                 data.inout = builder.write(data.inout, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("Uncompress target", {
+-                        .attachments = { .color = { data.inout }}
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.inout;
++
++                builder.declareRenderPass("Uncompress target", descr);
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+                 customResolvePrepareSubpass(driver, CustomResolveOp::UNCOMPRESS);
+@@ -2334,33 +2414,27 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::colorGrading(FrameGraph& fg,
+                 auto const& material = getPostProcessMaterial("colorGrading");
+                 FMaterialInstance* mi = material.getMaterialInstance(mEngine);
+ 
+-                mi->setParameter("lut", colorGrading->getHwHandle(), {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR
+-                });
++                SamplerParams samplerParams{};
++                samplerParams.filterMag = SamplerMagFilter::LINEAR;
++                samplerParams.filterMin = SamplerMinFilter::LINEAR;
++                mi->setParameter("lut", colorGrading->getHwHandle(), samplerParams);
++
+                 const float lutDimension = float(colorGrading->getDimension());
+                 mi->setParameter("lutSize", float2{
+                         0.5f / lutDimension, (lutDimension - 1.0f) / lutDimension,
+                 });
+                 mi->setParameter("colorBuffer", colorTexture, { /* shader uses texelFetch */ });
+-                mi->setParameter("bloomBuffer", bloomTexture, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR /* always read base level in shader */
+-                });
+-                mi->setParameter("flareBuffer", flareTexture, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR
+-                });
+-                mi->setParameter("dirtBuffer", dirtTexture, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR
+-                });
+-                mi->setParameter("starburstBuffer", starburstTexture, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR,
+-                        .wrapS = SamplerWrapMode::REPEAT,
+-                        .wrapT = SamplerWrapMode::REPEAT
+-                });
++                mi->setParameter("bloomBuffer", bloomTexture, samplerParams);
++                mi->setParameter("flareBuffer", flareTexture, samplerParams);
++                mi->setParameter("dirtBuffer", dirtTexture, samplerParams);
++
++                SamplerParams samplerParams2{};
++                samplerParams2.filterMag = SamplerMagFilter::LINEAR;
++                samplerParams2.filterMag = SamplerMagFilter::LINEAR;
++                samplerParams2.wrapS = SamplerWrapMode::REPEAT;
++                samplerParams2.wrapT = SamplerWrapMode::REPEAT;
++
++                mi->setParameter("starburstBuffer", starburstTexture, samplerParams2);
+ 
+                 // Bloom params
+                 float4 bloomParameters{
+@@ -2429,10 +2503,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::fxaa(FrameGraph& fg,
+ 
+                 auto const& material = getPostProcessMaterial("fxaa");
+                 FMaterialInstance* mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("colorBuffer", texture, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR
+-                });
++
++                SamplerParams colorSamplerParams{};
++                colorSamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                colorSamplerParams.filterMin = SamplerMinFilter::LINEAR;
++                mi->setParameter("colorBuffer", texture, colorSamplerParams);
+                 mi->setParameter("viewport", float4{
+                         (float)vp.left   / inDesc.width,
+                         (float)vp.bottom / inDesc.height,
+@@ -2530,9 +2605,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
+                     data.output = builder.read(data.output, FrameGraphTexture::Usage::SUBPASS_INPUT);
+                 }
+                 data.output = builder.write(data.output, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("TAA target", {
+-                        .attachments = { .color = { data.output, data.tonemappedOutput }}
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.output;
++                descr.attachments.content.color[1] = data.tonemappedOutput;
++                builder.declareRenderPass("TAA target", descr);
+             },
+             [=, &current](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+ 
+@@ -2577,10 +2654,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::taa(FrameGraph& fg,
+                 mi->setParameter("color",  color, {});  // nearest
+                 mi->setParameter("depth",  depth, {});  // nearest
+                 mi->setParameter("alpha", taaOptions.feedback);
+-                mi->setParameter("history", history, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR
+-                });
++
++                SamplerParams historySamplerParams{};
++                historySamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                historySamplerParams.filterMin = SamplerMinFilter::LINEAR;
++                mi->setParameter("history", history, historySamplerParams);
+                 mi->setParameter("filterWeights",  weights, 9);
+                 mi->setParameter("reprojection",
+                         historyProjection *
+@@ -2652,11 +2730,12 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::opaqueBlit(FrameGraph& fg,
+                 // target from data.input in the execute closure, because data.input may refer to
+                 // an imported render target and in this case data.input won't resolve to an actual
+                 // HwTexture handle. Using a RenderPass works because data.input will resolve
+-                // to the actual imported render target and will have the correct viewport.
+-                builder.declareRenderPass("opaque blit input", {
+-                        .attachments = { .color = { data.input }},
+-                        .viewport = vp
+-                });
++                // to the actual imported render target and will have the correct viewport
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.input;
++                descr.viewport = vp;
++
++                builder.declareRenderPass("opaque blit input", descr);
+             },
+             [=](FrameGraphResources const& resources, auto const& data, DriverApi& driver) {
+                 auto out = resources.getRenderPassInfo(0);
+@@ -2716,9 +2795,13 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscale(FrameGraph& fg, bool
+                 }
+ 
+                 data.output = builder.write(data.output, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass(builder.getName(data.output), {
+-                        .attachments = { .color = { data.output }, .depth = { data.depth }},
+-                        .clearFlags = TargetBufferFlags::DEPTH });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.output;
++                descr.attachments.content.depth = { data.depth };
++                descr.clearFlags = TargetBufferFlags::DEPTH;
++
++                builder.declareRenderPass(builder.getName(data.output), descr);
+             },
+             [this, twoPassesEASU, dsrOptions, vp, translucent, filter](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) {
+@@ -2766,9 +2849,10 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscale(FrameGraph& fg, bool
+                     splitEasuMaterial = &getPostProcessMaterial("fsr_easu_mobileF");
+                     auto* mi = splitEasuMaterial->getMaterialInstance(mEngine);
+                     setEasuUniforms(mi, inputDesc, outputDesc);
+-                    mi->setParameter("color", color, {
+-                        .filterMag = SamplerMagFilter::LINEAR
+-                    });
++
++                    SamplerParams colorSamplerParams{};
++                    colorSamplerParams.filterMag = SamplerMagFilter::LINEAR;
++                    mi->setParameter("color", color, colorSamplerParams);
+                     mi->setParameter("resolution",
+                             float4{ outputDesc.width, outputDesc.height,
+                                     1.0f / outputDesc.width, 1.0f / outputDesc.height });
+@@ -2785,10 +2869,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::upscale(FrameGraph& fg, bool
+                     if (dsrOptions.quality != QualityLevel::LOW) {
+                         setEasuUniforms(mi, inputDesc, outputDesc);
+                     }
+-                    mi->setParameter("color", color, {
+-                        .filterMag = (dsrOptions.quality == QualityLevel::LOW) ?
+-                                filter : SamplerMagFilter::LINEAR
+-                    });
++
++                    SamplerParams samplerParams{};
++                    samplerParams.filterMag = (dsrOptions.quality == QualityLevel::LOW) ?
++                                                  filter : SamplerMagFilter::LINEAR;
++                    mi->setParameter("color", color, samplerParams);
+                     mi->setParameter("resolution",
+                             float4{ outputDesc.width, outputDesc.height,
+                                     1.0f / outputDesc.width, 1.0f / outputDesc.height });
+@@ -2912,8 +2997,8 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::resolveBaseLevelNoCheck(Fram
+                 FrameGraphRenderPass::Descriptor rpDesc;
+ 
+                 auto& rpDescAttachment = isDepthFormat(desc.format) ?
+-                                   rpDesc.attachments.depth :
+-                                   rpDesc.attachments.color[0];
++                                   rpDesc.attachments.content.depth :
++                                   rpDesc.attachments.content.color[0];
+ 
+                 data.usage = isDepthFormat(desc.format) ?
+                              FrameGraphTexture::Usage::DEPTH_ATTACHMENT :
+@@ -2972,15 +3057,20 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::vsmMipmapPass(FrameGraph& fg
+                 const char* name = builder.getName(input);
+                 data.in = builder.sample(input);
+ 
+-                auto out = builder.createSubresource(data.in, "Mip level", {
+-                        .level = uint8_t(level + 1), .layer = layer });
++                FrameGraphTexture::SubResourceDescriptor subResDescr;
++                subResDescr.level = uint8_t(level + 1);
++                subResDescr.layer = layer;
++
++                auto out = builder.createSubresource(data.in, "Mip level", subResDescr);
+ 
+                 out = builder.write(out, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass(name, {
+-                    .attachments = { .color = { out }},
+-                    .clearColor = clearColor,
+-                    .clearFlags = TargetBufferFlags::COLOR
+-                });
++
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = out;
++                descr.clearColor = clearColor;
++                descr.clearFlags = TargetBufferFlags::COLOR;
++
++                builder.declareRenderPass(name, descr);
+             },
+             [=](FrameGraphResources const& resources,
+                     auto const& data, DriverApi& driver) {
+@@ -3003,10 +3093,11 @@ FrameGraphId<FrameGraphTexture> PostProcessManager::vsmMipmapPass(FrameGraph& fg
+                 pipeline.scissor = { 1u, 1u, dim - 2u, dim - 2u };
+ 
+                 FMaterialInstance* const mi = material.getMaterialInstance(mEngine);
+-                mi->setParameter("color", in, {
+-                        .filterMag = SamplerMagFilter::LINEAR,
+-                        .filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST
+-                });
++
++                SamplerParams samplerParams{};
++                samplerParams.filterMag = SamplerMagFilter::LINEAR;
++                samplerParams.filterMin = SamplerMinFilter::LINEAR_MIPMAP_NEAREST;
++                mi->setParameter("color", in, samplerParams);
+                 mi->setParameter("level", uint32_t(level));
+                 mi->setParameter("layer", uint32_t(layer));
+                 mi->setParameter("uvscale", 1.0f / dim);
+diff --git a/filament/src/RendererUtils.cpp b/filament/src/RendererUtils.cpp
+index a04437f..0014c97 100644
+--- a/filament/src/RendererUtils.cpp
++++ b/filament/src/RendererUtils.cpp
+@@ -153,12 +153,13 @@ FrameGraphId<FrameGraphTexture> RendererUtils::colorPass(
+                  * be (the imported resource viewport is set to 'vp', see  how 'fgViewRenderTarget'
+                  * is initialized in this file).
+                  */
+-                builder.declareRenderPass("Color Pass Target", {
+-                        .attachments = { .color = { data.color, data.output },
+-                                .depth = data.depth,
+-                                .stencil = data.stencil },
+-                                .samples = config.msaa,
+-                        .clearFlags = clearColorFlags | clearDepthFlags | clearStencilFlags });
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.color;
++                descr.attachments.content.color[1] = data.output;
++                descr.attachments.content.depth = data.depth;
++                descr.samples = config.msaa;
++                descr.clearFlags = clearColorFlags | clearDepthFlags;
++                builder.declareRenderPass("Color Pass Target", descr);
+ 
+                 data.clearColor = config.clearColor;
+                 data.clearFlags = clearColorFlags | clearDepthFlags | clearStencilFlags;
+diff --git a/filament/src/ShadowMapManager.cpp b/filament/src/ShadowMapManager.cpp
+index 41b1123..97b7eeb 100644
+--- a/filament/src/ShadowMapManager.cpp
++++ b/filament/src/ShadowMapManager.cpp
+@@ -241,8 +241,8 @@ FrameGraphId<FrameGraphTexture> ShadowMapManager::render(FrameGraph& fg, FEngine
+                         data.output = builder.write(data.output,
+                                 FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+ 
+-                        renderTargetDesc.attachments.color[0] = data.output;
+-                        renderTargetDesc.attachments.depth = depth;
++                        renderTargetDesc.attachments.content.color[0] = data.output;
++                        renderTargetDesc.attachments.content.depth = depth;
+                         renderTargetDesc.clearFlags =
+                                 TargetBufferFlags::COLOR | TargetBufferFlags::DEPTH;
+                         // we need to clear the shadow map with the max EVSM moments
+@@ -253,21 +253,19 @@ FrameGraphId<FrameGraphTexture> ShadowMapManager::render(FrameGraph& fg, FEngine
+                             data.tempBlurSrc = builder.write(data.tempBlurSrc,
+                                     FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+ 
+-                            data.blurRt = builder.declareRenderPass("Temp Shadow RT", {
+-                                    .attachments = {
+-                                            .color = { data.tempBlurSrc },
+-                                            .depth = depth },
+-                                    .clearColor = vsmClearColor,
+-                                    .samples = options->vsm.msaaSamples,
+-                                    .clearFlags = TargetBufferFlags::COLOR
+-                                                  | TargetBufferFlags::DEPTH
+-                            });
++                            FrameGraphRenderPass::Descriptor descr;
++                            descr.attachments.content.color[0] = data.tempBlurSrc;
++                            descr.attachments.content.depth = depth;
++                            descr.clearColor = vsmClearColor;
++                            descr.samples = options->vsm.msaaSamples;
++                            descr.clearFlags = TargetBufferFlags::COLOR | TargetBufferFlags::DEPTH;
++                            data.blurRt = builder.declareRenderPass("Temp Shadow RT", descr);
+                         }
+                     } else {
+                         // the shadowmap layer
+                         data.output = builder.write(data.output,
+                                 FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+-                        renderTargetDesc.attachments.depth = data.output;
++                        renderTargetDesc.attachments.content.depth = data.output;
+                         renderTargetDesc.clearFlags = TargetBufferFlags::DEPTH;
+                     }
+ 
+diff --git a/filament/src/ShadowMapManager.h b/filament/src/ShadowMapManager.h
+index 15354ce..adec719 100644
+--- a/filament/src/ShadowMapManager.h
++++ b/filament/src/ShadowMapManager.h
+@@ -60,7 +60,7 @@ struct ShadowMappingUniforms {
+ class ShadowMapManager {
+ public:
+ 
+-    using ShadowMappingUniforms = ShadowMappingUniforms;
++    using ShadowMappingUniforms = filament::ShadowMappingUniforms;
+ 
+     enum class ShadowTechnique : uint8_t {
+         NONE = 0x0u,
+diff --git a/filament/src/details/Renderer.cpp b/filament/src/details/Renderer.cpp
+index c525359..98d815f 100644
+--- a/filament/src/details/Renderer.cpp
++++ b/filament/src/details/Renderer.cpp
+@@ -790,9 +790,10 @@ void FRenderer::renderJob(ArenaScope& arena, FView& view) {
+                 [&](FrameGraph::Builder& builder, auto& data) {
+                     data.picking = builder.read(picking,
+                             FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                    builder.declareRenderPass("Picking Resolve Target", {
+-                            .attachments = { .color = { data.picking }}
+-                    });
++
++                    FrameGraphRenderPass::Descriptor descr;
++                    descr.attachments.content.color[0] = data.picking;
++                    builder.declareRenderPass("Picking Resolve Target", descr);
+                     builder.sideEffect();
+                 },
+                 [=, &view](FrameGraphResources const& resources,
+diff --git a/filament/src/details/Texture.cpp b/filament/src/details/Texture.cpp
+index d74545b..84a82a0 100644
+--- a/filament/src/details/Texture.cpp
++++ b/filament/src/details/Texture.cpp
+@@ -370,8 +370,11 @@ void FTexture::setExternalStream(FEngine& engine, FStream* stream) noexcept {
+ }
+ 
+ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
+-    ASSERT_PRECONDITION(mTarget != SamplerType::SAMPLER_EXTERNAL,
+-            "External Textures are not mipmappable.");
++
++    /*if (!ASSERT_POSTCONDITION_NON_FATAL(mTarget != SamplerType::SAMPLER_EXTERNAL,
++            "External Textures are not mipmappable.")) {
++        return;
++    }*/
+ 
+     const bool formatMipmappable = engine.getDriverApi().isTextureFormatMipmappable(mFormat);
+     ASSERT_PRECONDITION(formatMipmappable,
+@@ -441,7 +444,7 @@ void FTexture::generateMipmaps(FEngine& engine) const noexcept {
+             }
+             break;
+         case SamplerType::SAMPLER_EXTERNAL:
+-            // not mipmapable
++            generateMipsForLayer({});
+             break;
+         case SamplerType::SAMPLER_3D:
+             // TODO: handle SAMPLER_3D -- this can't be done with a 2D blit, this would require
+diff --git a/filament/src/fg/FrameGraph.cpp b/filament/src/fg/FrameGraph.cpp
+index 9fd4f4d..1f024ee 100644
+--- a/filament/src/fg/FrameGraph.cpp
++++ b/filament/src/fg/FrameGraph.cpp
+@@ -51,8 +51,12 @@ uint32_t FrameGraph::Builder::declareRenderPass(const char* name,
+ FrameGraphId<FrameGraphTexture> FrameGraph::Builder::declareRenderPass(
+         FrameGraphId<FrameGraphTexture> color, uint32_t* index) {
+     color = write(color);
++
++  FrameGraphRenderPass::Descriptor descr;
++  descr.attachments.content.color[0] = color;
++
+     uint32_t id = declareRenderPass(getName(color),
+-            { .attachments = { .color = { color }}});
++            descr);
+     if (index) *index = id;
+     return color;
+ }
+diff --git a/filament/src/fg/FrameGraphId.h b/filament/src/fg/FrameGraphId.h
+index e5b8fc8..198d153 100644
+--- a/filament/src/fg/FrameGraphId.h
++++ b/filament/src/fg/FrameGraphId.h
+@@ -86,7 +86,7 @@ template<typename RESOURCE>
+ class FrameGraphId : public FrameGraphHandle {
+ public:
+     using FrameGraphHandle::FrameGraphHandle;
+-    FrameGraphId() noexcept = default;
++    FrameGraphId() {}
+     explicit FrameGraphId(FrameGraphHandle r) : FrameGraphHandle(r) { }
+ };
+ 
+diff --git a/filament/src/fg/FrameGraphRenderPass.h b/filament/src/fg/FrameGraphRenderPass.h
+index 5ab1ec9..767fd47 100644
+--- a/filament/src/fg/FrameGraphRenderPass.h
++++ b/filament/src/fg/FrameGraphRenderPass.h
+@@ -33,13 +33,14 @@ namespace filament {
+ struct FrameGraphRenderPass {
+     static constexpr size_t ATTACHMENT_COUNT = backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT + 2;
+     struct Attachments {
++        struct Content {
++            FrameGraphId<FrameGraphTexture> color[backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT];
++            FrameGraphId<FrameGraphTexture> depth;
++            FrameGraphId<FrameGraphTexture> stencil;
++        };
+         union {
+             FrameGraphId<FrameGraphTexture> array[ATTACHMENT_COUNT] = {};
+-            struct {
+-                FrameGraphId<FrameGraphTexture> color[backend::MRT::MAX_SUPPORTED_RENDER_TARGET_COUNT];
+-                FrameGraphId<FrameGraphTexture> depth;
+-                FrameGraphId<FrameGraphTexture> stencil;
+-            };
++            Content content;
+         };
+     };
+ 
+diff --git a/filament/test/filament_framegraph_test.cpp b/filament/test/filament_framegraph_test.cpp
+index ae1f101..9fb3b1b 100644
+--- a/filament/test/filament_framegraph_test.cpp
++++ b/filament/test/filament_framegraph_test.cpp
+@@ -341,7 +341,9 @@ TEST_F(FrameGraphTest, Basic) {
+             [&](FrameGraph::Builder& builder, auto& data) {
+                 data.depth = builder.create<FrameGraphTexture>("Depth Buffer", {.width=16, .height=32});
+                 data.depth = builder.write(data.depth, FrameGraphTexture::Usage::DEPTH_ATTACHMENT);
+-                builder.declareRenderPass("Depth target", { .attachments = { .depth = data.depth }});
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.depth = data.depth;
++                builder.declareRenderPass("Depth target", descr);
+                 EXPECT_TRUE(fg.isValid(data.depth));
+             },
+             [=](FrameGraphResources const& resources, auto const& data, backend::DriverApi& driver) {
+@@ -372,10 +374,13 @@ TEST_F(FrameGraphTest, Basic) {
+                 data.gbuf1 = builder.write(data.gbuf1, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 data.gbuf2 = builder.write(data.gbuf2, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+                 data.gbuf3 = builder.write(data.gbuf3, FrameGraphTexture::Usage::COLOR_ATTACHMENT);
+-                builder.declareRenderPass("Gbuffer target", { .attachments = {
+-                        .color = { data.gbuf1, data.gbuf2, data.gbuf3 },
+-                        .depth = data.depth
+-                }});
++                FrameGraphRenderPass::Descriptor descr;
++                descr.attachments.content.color[0] = data.gbuf1;
++                descr.attachments.content.color[1] = data.gbuf2;
++                descr.attachments.content.color[2] = data.gbuf3;
++                descr.attachments.content.depth = data.depth;
++            
++                builder.declareRenderPass("Gbuffer target", descr);
+ 
+                 EXPECT_TRUE(fg.isValid(data.depth));
+             },
+diff --git a/libs/camutils/CMakeLists.txt b/libs/camutils/CMakeLists.txt
+index 60a67fb..f0b13a1 100644
+--- a/libs/camutils/CMakeLists.txt
++++ b/libs/camutils/CMakeLists.txt
+@@ -28,6 +28,12 @@ include_directories(${PUBLIC_HDR_DIR})
+ 
+ add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ target_link_libraries(${TARGET} PUBLIC math)
+ 
+ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+diff --git a/libs/filabridge/CMakeLists.txt b/libs/filabridge/CMakeLists.txt
+index ffcd1ce..90bfa95 100644
+--- a/libs/filabridge/CMakeLists.txt
++++ b/libs/filabridge/CMakeLists.txt
+@@ -24,6 +24,12 @@ add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
+ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+ set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ target_link_libraries(${TARGET} utils)
+ target_link_libraries(${TARGET} math)
+ target_link_libraries(${TARGET} backend_headers)
+diff --git a/libs/filaflat/CMakeLists.txt b/libs/filaflat/CMakeLists.txt
+index 0ebf53e..86d9382 100644
+--- a/libs/filaflat/CMakeLists.txt
++++ b/libs/filaflat/CMakeLists.txt
+@@ -24,6 +24,12 @@ add_library(${TARGET} ${HDRS} ${SRCS})
+ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+ set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ target_link_libraries(${TARGET} filabridge utils)
+ 
+ if (FILAMENT_SUPPORTS_VULKAN)
+diff --git a/libs/filamat/CMakeLists.txt b/libs/filamat/CMakeLists.txt
+index bd00a0d..fd7adb6 100644
+--- a/libs/filamat/CMakeLists.txt
++++ b/libs/filamat/CMakeLists.txt
+@@ -94,6 +94,12 @@ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+ set_target_properties(${TARGET} PROPERTIES FOLDER Libs)
+ target_link_libraries(${TARGET} shaders filabridge utils smol-v)
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ # Filamat Lite
+ add_library(filamat_lite STATIC ${HDRS} ${LITE_PRIVATE_HDRS} ${LITE_SRCS})
+ target_include_directories(filamat_lite PUBLIC ${PUBLIC_HDR_DIR})
+diff --git a/libs/filamat/include/filamat/MaterialBuilder.h b/libs/filamat/include/filamat/MaterialBuilder.h
+index 9bd6182..a2891bf 100644
+--- a/libs/filamat/include/filamat/MaterialBuilder.h
++++ b/libs/filamat/include/filamat/MaterialBuilder.h
+@@ -142,10 +142,10 @@ protected:
+     std::vector<CodeGenParams> mCodeGenPermutations;
+     // For finding properties and running semantic analysis, we always use the same code gen
+     // permutation. This is the first permutation generated with default arguments passed to matc.
+-    static constexpr const CodeGenParams mSemanticCodeGenParams = {
+-            .shaderModel = ShaderModel::MOBILE,
+-            .targetApi = TargetApi::OPENGL,
+-            .targetLanguage = TargetLanguage::SPIRV
++    const CodeGenParams mSemanticCodeGenParams = {
++        (int) ShaderModel::GL_ES_30,
++        TargetApi::OPENGL,
++        TargetLanguage::SPIRV
+     };
+ 
+     // Keeps track of how many times MaterialBuilder::init() has been called without a call to
+diff --git a/libs/filameshio/CMakeLists.txt b/libs/filameshio/CMakeLists.txt
+index eab3192..7abf1bd 100644
+--- a/libs/filameshio/CMakeLists.txt
++++ b/libs/filameshio/CMakeLists.txt
+@@ -27,6 +27,12 @@ target_link_libraries(${TARGET}
+     PUBLIC filament # Public only because the filamesh API needs Box.h
+ )
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ # ==================================================================================================
+ # Installation
+ # ==================================================================================================
+diff --git a/libs/geometry/CMakeLists.txt b/libs/geometry/CMakeLists.txt
+index 5c46eb6..cdacd13 100644
+--- a/libs/geometry/CMakeLists.txt
++++ b/libs/geometry/CMakeLists.txt
+@@ -24,6 +24,12 @@ include_directories(${PUBLIC_HDR_DIR})
+ 
+ add_library(${TARGET} STATIC ${PUBLIC_HDRS} ${SRCS})
+ 
++if (CMAKE_COMPILER_IS_GNUCXX)
++    set_target_properties(${TARGET} PROPERTIES
++                          C_VISIBILITY_PRESET default
++                          CXX_VISIBILITY_PRESET default)
++endif()
++
+ target_link_libraries(${TARGET} PUBLIC math utils)
+ 
+ target_include_directories(${TARGET} PUBLIC ${PUBLIC_HDR_DIR})
+diff --git a/libs/iblprefilter/CMakeLists.txt b/libs/iblprefilter/CMakeLists.txt
+index e39212e..ae9fcfe 100644
+--- a/libs/iblprefilter/CMakeLists.txt
++++ b/libs/iblprefilter/CMakeLists.txt
+@@ -108,7 +108,7 @@ if (MSVC)
+ elseif(WEBGL)
+     # Avoid strict-vtable-pointers here, it is broken in WebAssembly.
+     set(OPTIMIZATION_FLAGS -fvisibility-inlines-hidden)
+-else()
++elseif(APPLE)
+     set(OPTIMIZATION_FLAGS
+         -ffast-math
+         -ffp-contract=fast
+@@ -117,6 +117,12 @@ else()
+         -fvisibility-inlines-hidden
+         -fstrict-vtable-pointers
+     )
++else()
++    set(OPTIMIZATION_FLAGS
++        -ffast-math
++        -ffp-contract=fast
++        -fvisibility-inlines-hidden
++    )
+ endif()
+ 
+ target_compile_options(${TARGET} PRIVATE
+diff --git a/libs/iblprefilter/src/IBLPrefilterContext.cpp b/libs/iblprefilter/src/IBLPrefilterContext.cpp
+index c911301..c104bea 100644
+--- a/libs/iblprefilter/src/IBLPrefilterContext.cpp
++++ b/libs/iblprefilter/src/IBLPrefilterContext.cpp
+@@ -207,11 +207,11 @@ Texture* IBLPrefilterContext::EquirectangularToCubemap::operator()(
+ 
+     ASSERT_PRECONDITION(equirect != nullptr, "equirect is null!");
+ 
+-    ASSERT_PRECONDITION(equirect->getTarget() == Texture::Sampler::SAMPLER_2D,
++    ASSERT_PRECONDITION(equirect->getTarget() == Texture::Sampler::SAMPLER_2D || equirect->getTarget() == Texture::Sampler::SAMPLER_EXTERNAL,
+             "equirect must be a 2D texture.");
+ 
+     UTILS_UNUSED_IN_RELEASE
+-    const uint8_t maxLevelCount = uint8_t(std::log2(equirect->getWidth()) + 0.5f) + 1u;
++    const uint8_t maxLevelCount = uint8_t(std::ilogbf(std::max(equirect->getWidth(), equirect->getHeight()))) + 1u;
+ 
+     ASSERT_PRECONDITION(equirect->getLevels() == maxLevelCount,
+             "equirect must have %u mipmap levels allocated.", +maxLevelCount);
+diff --git a/libs/utils/include/utils/StructureOfArrays.h b/libs/utils/include/utils/StructureOfArrays.h
+index 7b2d330..77af78a 100644
+--- a/libs/utils/include/utils/StructureOfArrays.h
++++ b/libs/utils/include/utils/StructureOfArrays.h
+@@ -25,7 +25,7 @@
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
+-
++#include <algorithm>
+ #include <array>        // note: this is safe, see how std::array is used below (inline / private)
+ #include <cstddef>
+ #include <utility>
+diff --git a/libs/utils/include/utils/algorithm.h b/libs/utils/include/utils/algorithm.h
+index d92555c..e18520b 100644
+--- a/libs/utils/include/utils/algorithm.h
++++ b/libs/utils/include/utils/algorithm.h
+@@ -18,7 +18,7 @@
+ #define TNT_UTILS_ALGORITHM_H
+ 
+ #include <utils/compiler.h>
+-
++#include <cstddef>
+ #include <type_traits>      // for std::enable_if
+ 
+ #include <limits.h>
+diff --git a/libs/viewer/src/Settings_generated.cpp b/libs/viewer/src/Settings_generated.cpp
+index 0b35caa..5c5ddd8 100644
+--- a/libs/viewer/src/Settings_generated.cpp
++++ b/libs/viewer/src/Settings_generated.cpp
+@@ -6,7 +6,9 @@
+ #include <utils/Log.h>
+ 
+ #include <ostream>
+-
++#if defined(__GNUC__)
++#include <string.h>
++#endif
+ #include "jsonParseUtils.h"
+ 
+ using namespace utils;
+diff --git a/tools/beamsplitter/emitters/serializer.template b/tools/beamsplitter/emitters/serializer.template
+index 412bddc..69db0e9 100644
+--- a/tools/beamsplitter/emitters/serializer.template
++++ b/tools/beamsplitter/emitters/serializer.template
+@@ -6,7 +6,9 @@
+ #include <utils/Log.h>
+ 
+ #include <ostream>
+-
++#if defined(__GNUC__)
++#include <string.h>
++#endif
+ #include "jsonParseUtils.h"
+ 
+ using namespace utils;
+diff --git a/tools/matc/src/matc/ParametersProcessor.cpp b/tools/matc/src/matc/ParametersProcessor.cpp
+index f340b0e..a0302ed 100644
+--- a/tools/matc/src/matc/ParametersProcessor.cpp
++++ b/tools/matc/src/matc/ParametersProcessor.cpp
+@@ -120,6 +120,8 @@ static ssize_t extractArraySize(std::string& type) {
+         return 0;
+     }
+ 
++    const std::string typeWithSizeStr = type;
++
+     // Remove the [...] bit
+     type.erase(start);
+ 
+@@ -129,7 +131,7 @@ static ssize_t extractArraySize(std::string& type) {
+     }
+ 
+     // Return the size (we already validated this part of the string contains only digits)
+-    return (ssize_t)std::stoul(type.c_str() + start + 1, nullptr);
++    return std::stoul(typeWithSizeStr.c_str() + start + 1, nullptr);
+ }
+ 
+ static bool processParameter(MaterialBuilder& builder, const JsonishObject& jsonObject) noexcept {
